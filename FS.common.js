@@ -248,7 +248,7 @@ var RNFS = {
     return readFileGeneric(filepath, encodingOrOptions, RNFSManager.readFile);
   },
 
-  readFileChunk(filepath: string, offset: long, chunkSize: long): Promise<string> {
+  readFileChunk(filepath: string, offset: number, chunkSize: number): Promise<string> {
     return RNFSManager.readFileChunk(normalizeFilePath(filepath), offset, chunkSize);
   },
 

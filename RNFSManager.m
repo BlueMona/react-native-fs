@@ -217,13 +217,14 @@ RCT_EXPORT_METHOD(readFile:(NSString *)filepath
 }
 
 RCT_EXPORT_METHOD(readFileChunk:(NSString *)filepath
-                  offset:(long)offset
-                  chunkSize:(long)chunkSize
+                  offset:(nonnull NSNumber *)offsetP
+                  chunkSize:(nonnull NSNumber *)chunkSizeP
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 {
   BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filepath];
-
+  long long offset = [offsetP longLongValue];
+  long chunkSize = [chunkSizeP longValue];
   if (!fileExists) {
     return reject(@"ENOENT", [NSString stringWithFormat:@"ENOENT: no such file or directory, open '%@'", filepath], nil);
   }
@@ -244,7 +245,7 @@ RCT_EXPORT_METHOD(readFileChunk:(NSString *)filepath
   [readHandle seekToFileOffset:offset];
   NSData *content = [readHandle readDataOfLength:chunkSize];
   NSString *base64Content = [content base64EncodedStringWithOptions:NSDataBase64EncodingEndLineWithLineFeed];
-
+  [readHandle closeFile];
   resolve(base64Content);
 }
 
