@@ -248,6 +248,10 @@ var RNFS = {
     return readFileGeneric(filepath, encodingOrOptions, RNFSManager.readFile);
   },
 
+  readFileChunk(filepath: string, offset: long, chunkSize: long): Promise<string> {
+    return RNFSManager.readFileChunk(normalizeFilePath(filepath), offset, chunkSize);
+  },
+
   // Android only
   readFileAssets(filepath: string, encodingOrOptions?: any): Promise<string> {
     if (!RNFSManager.readFileAssets) {
