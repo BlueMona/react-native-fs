@@ -2,8 +2,11 @@ package com.rnfs;
 
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Environment;
 import android.os.StatFs;
+import android.provider.OpenableColumns;
 import android.support.annotation.Nullable;
 import android.util.Base64;
 import android.util.SparseArray;
@@ -116,9 +119,52 @@ public class RNFSManager extends ReactContextBaseJavaModule {
       FileInputStream inputStream = new FileInputStream(filepath);
       byte[] buffer = new byte[(int)file.length()];
       inputStream.read(buffer);
-
+      inputStream.close();
       String base64Content = Base64.encodeToString(buffer, Base64.NO_WRAP);
 
+      promise.resolve(base64Content);
+    } catch (Exception ex) {
+      ex.printStackTrace();
+      reject(promise, filepath, ex);
+    }
+  }
+
+  @ReactMethod
+  public void readFileChunk(String filepath, int offset, int chunkSize, Promise promise) {
+    try {
+      InputStream inputStream = null;
+      int fileSize = 0;
+
+      if(filepath.startsWith("content://"))
+      {
+        Uri contentUri = Uri.parse(filepath);
+        Cursor cursor =
+                getReactApplicationContext().getContentResolver().query(contentUri, null, null, null, null);
+        cursor.moveToFirst();
+        fileSize = (int)cursor.getLong(cursor.getColumnIndex(OpenableColumns.SIZE));
+        cursor.close();
+        inputStream = getReactApplicationContext().getContentResolver().openInputStream(contentUri);
+      } else {
+        File file = new File(filepath);
+        if (file.isDirectory()) {
+          rejectFileIsDirectory(promise);
+          return;
+        }
+        if (!file.exists()) {
+          rejectFileNotFound(promise, filepath);
+          return;
+        }
+        File f = new File(filepath);
+        fileSize = (int)f.length();
+        inputStream = new FileInputStream(filepath);
+      }
+
+      chunkSize = Math.max(Math.min(fileSize - offset, chunkSize), 0);
+      byte[] buffer = new byte[chunkSize];
+      inputStream.skip(offset);
+      inputStream.read(buffer, 0, chunkSize);
+      String base64Content = Base64.encodeToString(buffer, Base64.NO_WRAP);
+      inputStream.close();
       promise.resolve(base64Content);
     } catch (Exception ex) {
       ex.printStackTrace();
@@ -409,11 +455,22 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   @ReactMethod
   public void stat(String filepath, Promise promise) {
     try {
+      WritableMap statMap = Arguments.createMap();
+
+      if(filepath.startsWith("content://"))
+      {
+        Uri contentUri = Uri.parse(filepath);
+        Cursor cursor =
+                getReactApplicationContext().getContentResolver().query(contentUri, null, null, null, null);
+        cursor.moveToFirst();
+        long size = cursor.getLong(cursor.getColumnIndex(OpenableColumns.SIZE));
+        cursor.close();
+        statMap.putInt("size", (int) size);
+        promise.resolve(statMap);
+      }
       File file = new File(filepath);
 
       if (!file.exists()) throw new Exception("File does not exist");
-
-      WritableMap statMap = Arguments.createMap();
 
       statMap.putInt("ctime", (int)(file.lastModified() / 1000));
       statMap.putInt("mtime", (int)(file.lastModified() / 1000));
