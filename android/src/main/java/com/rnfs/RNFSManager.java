@@ -1,9 +1,12 @@
 package com.rnfs;
 
+import android.app.admin.DevicePolicyManager;
+import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Environment;
 import android.os.StatFs;
 import android.provider.OpenableColumns;
@@ -56,6 +59,29 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   @Override
   public String getName() {
     return "RNFSManager";
+  }
+
+  @ReactMethod
+  public void getEncryptionStatus(Promise promise) {
+    int status = DevicePolicyManager.ENCRYPTION_STATUS_UNSUPPORTED;
+    if (Build.VERSION.SDK_INT >= 11) {
+      final DevicePolicyManager dpm = (DevicePolicyManager)
+              this.getReactApplicationContext().getSystemService(Context.DEVICE_POLICY_SERVICE);
+      if (dpm != null) {
+        switch(dpm.getStorageEncryptionStatus()) {
+          case DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE:
+            status = 2;
+            break;
+          case DevicePolicyManager.ENCRYPTION_STATUS_ACTIVE_DEFAULT_KEY:
+            status = 1;
+            break;
+          case DevicePolicyManager.ENCRYPTION_STATUS_INACTIVE:
+            status = 0;
+            break;
+        }
+      }
+    }
+    promise.resolve(status);
   }
 
   @ReactMethod
