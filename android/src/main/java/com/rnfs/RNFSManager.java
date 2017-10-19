@@ -493,6 +493,7 @@ public class RNFSManager extends ReactContextBaseJavaModule {
         cursor.close();
         statMap.putInt("size", (int) size);
         promise.resolve(statMap);
+        return;
       }
       File file = new File(filepath);
 
