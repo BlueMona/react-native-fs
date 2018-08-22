@@ -170,7 +170,7 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void writeFile(String filepath, String base64Content, Promise promise) {
+  public void writeFile(String filepath, String base64Content, ReadableMap fileProtectionOptions, Promise promise) {
     try {
       byte[] bytes = Base64.decode(base64Content, Base64.DEFAULT);
 
@@ -385,7 +385,7 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void moveFile(String filepath, String destPath, Promise promise) {
+  public void moveFile(String filepath, String destPath, ReadableMap fileProtectionOptions, Promise promise) {
     try {
       File inFile = new File(filepath);
 
@@ -403,7 +403,7 @@ public class RNFSManager extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void copyFile(String filepath, String destPath, Promise promise) {
+  public void copyFile(String filepath, String destPath, ReadableMap fileProtectionOptions, Promise promise) {
     try {
       copyFile(filepath, destPath);
 
