@@ -22,20 +22,23 @@ import com.facebook.react.bridge.ReadableMapKeySetIterator;
 public class Downloader extends AsyncTask<DownloadParams, int[], DownloadResult> {
   private DownloadParams mParam;
   private AtomicBoolean mAbort = new AtomicBoolean(false);
+  DownloadResult res;
 
   protected DownloadResult doInBackground(DownloadParams... params) {
     mParam = params[0];
+    res = new DownloadResult();
 
-    DownloadResult res = new DownloadResult();
-
-    try {
-      this.download(mParam, res);
-      mParam.onTaskCompleted.onTaskCompleted(res);
-    } catch (Exception ex) {
-      res.exception = ex;
-      mParam.onTaskCompleted.onTaskCompleted(res);
-      return res;
-    }
+    new Thread(new Runnable() {
+      public void run() {
+        try {
+          download(mParam, res);
+          mParam.onTaskCompleted.onTaskCompleted(res);
+        } catch (Exception ex) {
+          res.exception = ex;
+          mParam.onTaskCompleted.onTaskCompleted(res);
+        }
+      }
+    }).start();
 
     return res;
   }
@@ -56,8 +59,8 @@ public class Downloader extends AsyncTask<DownloadParams, int[], DownloadResult>
         connection.setRequestProperty(key, value);
       }
 
-      connection.setConnectTimeout(5000);
-      connection.setReadTimeout(15000);
+      connection.setConnectTimeout(param.connectionTimeout);
+      connection.setReadTimeout(param.readTimeout);
       connection.connect();
 
       int statusCode = connection.getResponseCode();
@@ -67,7 +70,9 @@ public class Downloader extends AsyncTask<DownloadParams, int[], DownloadResult>
         statusCode != HttpURLConnection.HTTP_OK &&
         (
           statusCode == HttpURLConnection.HTTP_MOVED_PERM ||
-          statusCode == HttpURLConnection.HTTP_MOVED_TEMP
+          statusCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+          statusCode == 307 ||
+          statusCode == 308
         )
       );
 
@@ -82,53 +87,53 @@ public class Downloader extends AsyncTask<DownloadParams, int[], DownloadResult>
         statusCode = connection.getResponseCode();
         lengthOfFile = connection.getContentLength();
       }
+      if(statusCode >= 200 && statusCode < 300) {
+        Map<String, List<String>> headers = connection.getHeaderFields();
 
-      Map<String, List<String>> headers = connection.getHeaderFields();
+        Map<String, String> headersFlat = new HashMap<String, String>();
 
-      Map<String, String> headersFlat = new HashMap<String, String>();
+        for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
+          String headerKey = entry.getKey();
+          String valueKey = entry.getValue().get(0);
 
-      for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
-        String headerKey = entry.getKey();
-        String valueKey = entry.getValue().get(0);
-
-        if (headerKey != null && valueKey != null) {
-          headersFlat.put(headerKey, valueKey);
-        }
-      }
-
-      mParam.onDownloadBegin.onDownloadBegin(statusCode, lengthOfFile, headersFlat);
-
-      input = new BufferedInputStream(connection.getInputStream(), 8 * 1024);
-      output = new FileOutputStream(param.dest);
-
-      byte data[] = new byte[8 * 1024];
-      int total = 0;
-      int count;
-      double lastProgressValue = 0;
-
-      while ((count = input.read(data)) != -1) {
-        if (mAbort.get()) throw new Exception("Download has been aborted");
-
-        total += count;
-        if (param.progressDivider <= 0) {
-          publishProgress(new int[]{lengthOfFile, total});
-        } else {
-          double progress = Math.round(((double) total * 100) / lengthOfFile);
-          if (progress % param.progressDivider == 0) {
-            if ((progress != lastProgressValue) || (total == lengthOfFile)) {
-              Log.d("Downloader", "EMIT: " + String.valueOf(progress) + ", TOTAL:" + String.valueOf(total));
-              lastProgressValue = progress;
-              publishProgress(new int[]{lengthOfFile, total});
-            }
+          if (headerKey != null && valueKey != null) {
+            headersFlat.put(headerKey, valueKey);
           }
         }
-        output.write(data, 0, count);
+
+        mParam.onDownloadBegin.onDownloadBegin(statusCode, lengthOfFile, headersFlat);
+
+        input = new BufferedInputStream(connection.getInputStream(), 8 * 1024);
+        output = new FileOutputStream(param.dest);
+
+        byte data[] = new byte[8 * 1024];
+        int total = 0;
+        int count;
+        double lastProgressValue = 0;
+
+        while ((count = input.read(data)) != -1) {
+          if (mAbort.get()) throw new Exception("Download has been aborted");
+
+          total += count;
+          if (param.progressDivider <= 0) {
+            publishProgress(new int[]{lengthOfFile, total});
+          } else {
+            double progress = Math.round(((double) total * 100) / lengthOfFile);
+            if (progress % param.progressDivider == 0) {
+              if ((progress != lastProgressValue) || (total == lengthOfFile)) {
+                Log.d("Downloader", "EMIT: " + String.valueOf(progress) + ", TOTAL:" + String.valueOf(total));
+                lastProgressValue = progress;
+                publishProgress(new int[]{lengthOfFile, total});
+              }
+            }
+          }
+          output.write(data, 0, count);
+        }
+
+        output.flush();
+        res.bytesWritten = total;
       }
-
-      output.flush();
-
       res.statusCode = statusCode;
-      res.bytesWritten = total;
     } finally {
       if (output != null) output.close();
       if (input != null) input.close();

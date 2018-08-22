@@ -9,11 +9,12 @@
 @property (copy) RNFSDownloadParams* params;
 
 @property (retain) NSURLSession* session;
-@property (retain) NSURLSessionTask* task;
+@property (retain) NSURLSessionDownloadTask* task;
 @property (retain) NSNumber* statusCode;
 @property (retain) NSNumber* lastProgressValue;
 @property (retain) NSNumber* contentLength;
 @property (retain) NSNumber* bytesWritten;
+@property (retain) NSData* resumeData;
 
 @property (retain) NSFileHandle* fileHandle;
 
@@ -21,39 +22,51 @@
 
 @implementation RNFSDownloader
 
-- (void)downloadFile:(RNFSDownloadParams*)params
+- (NSString *)downloadFile:(RNFSDownloadParams*)params
 {
-  _params = params;
+    NSString *uuid = nil;
+    
+    _params = params;
 
   _bytesWritten = 0;
 
   NSURL* url = [NSURL URLWithString:_params.fromUrl];
 
-  [[NSFileManager defaultManager] createFileAtPath:_params.toFile contents:nil attributes:nil];
-  _fileHandle = [NSFileHandle fileHandleForWritingAtPath:_params.toFile];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:_params.toFile]) {
+    _fileHandle = [NSFileHandle fileHandleForWritingAtPath:_params.toFile];
 
-  if (!_fileHandle) {
-    NSError* error = [NSError errorWithDomain:@"Downloader" code:NSURLErrorFileDoesNotExist
-                              userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat: @"Failed to create target file at path: %@", _params.toFile]}];
+    if (!_fileHandle) {
+      NSError* error = [NSError errorWithDomain:@"Downloader" code:NSURLErrorFileDoesNotExist
+                                userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat: @"Failed to write target file at path: %@", _params.toFile]}];
 
-    return _params.errorCallback(error);
-  } else {
-    [_fileHandle closeFile];
+      _params.errorCallback(error);
+      return nil;
+    } else {
+      [_fileHandle closeFile];
+    }
   }
 
   NSURLSessionConfiguration *config;
   if (_params.background) {
-    NSString *uuid = [[NSUUID UUID] UUIDString];
+    uuid = [[NSUUID UUID] UUIDString];
     config = [NSURLSessionConfiguration backgroundSessionConfigurationWithIdentifier:uuid];
+    config.discretionary = _params.discretionary;
   } else {
     config = [NSURLSessionConfiguration defaultSessionConfiguration];
   }
 
+  if (!_params.cacheable) {
+    config.URLCache = nil;
+  }
+
   config.HTTPAdditionalHeaders = _params.headers;
+  config.timeoutIntervalForRequest = [_params.readTimeout intValue] / 1000.0;
 
   _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
   _task = [_session downloadTaskWithURL:url];
   [_task resume];
+    
+    return uuid;
 }
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didWriteData:(int64_t)bytesWritten totalBytesWritten:(int64_t)totalBytesWritten totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite
@@ -88,11 +101,20 @@
 
 - (void)URLSession:(NSURLSession *)session downloadTask:(NSURLSessionDownloadTask *)downloadTask didFinishDownloadingToURL:(NSURL *)location
 {
+  NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)downloadTask.response;
+  if (!_statusCode) {
+    _statusCode = [NSNumber numberWithLong:httpResponse.statusCode];
+  }
   NSURL *destURL = [NSURL fileURLWithPath:_params.toFile];
   NSFileManager *fm = [NSFileManager defaultManager];
   NSError *error = nil;
-  [fm removeItemAtURL:destURL error:nil];       // Remove file at destination path, if it exists
-  [fm moveItemAtURL:location toURL:destURL error:&error];
+  if([_statusCode integerValue] >= 200 && [_statusCode integerValue] < 300) {
+    [fm removeItemAtURL:destURL error:nil];       // Remove file at destination path, if it exists
+    [fm moveItemAtURL:location toURL:destURL error:&error];
+    // There are no guarantees about how often URLSession:downloadTask:didWriteData: will fire,
+    // so we read an authoritative number of bytes written here.
+    _bytesWritten = @([fm attributesOfItemAtPath:_params.toFile error:nil].fileSize);
+  }
   if (error) {
     NSLog(@"RNFS download: unable to move tempfile to destination. %@, %@", error, error.userInfo);
   }
@@ -102,22 +124,49 @@
 
 - (void)URLSession:(NSURLSession *)session task:(NSURLSessionTask *)task didCompleteWithError:(NSError *)error
 {
-  return error ? _params.errorCallback(error) : nil;
+  if (error && error.code != -999) {
+      _resumeData = error.userInfo[NSURLSessionDownloadTaskResumeData];
+      if (_resumeData != nil) {
+          _params.resumableCallback();
+      } else {
+          _params.errorCallback(error);
+      }
+  }
 }
 
 - (void)stopDownload
 {
   if (_task.state == NSURLSessionTaskStateRunning) {
-    [_task cancel];
+    [_task cancelByProducingResumeData:^(NSData * _Nullable resumeData) {
+        if (resumeData != nil) {
+            self.resumeData = resumeData;
+            _params.resumableCallback();
+        } else {
+            NSError *error = [NSError errorWithDomain:@"RNFS"
+                                                 code:@"Aborted"
+                                             userInfo:@{
+                                                        NSLocalizedDescriptionKey: @"Download has been aborted"
+                                                        }];
+            
+            _params.errorCallback(error);
+        }
+    }];
 
-    NSError *error = [NSError errorWithDomain:@"RNFS"
-                                         code:@"Aborted"
-                                     userInfo:@{
-                                       NSLocalizedDescriptionKey: @"Download has been aborted"
-                                     }];
-
-    return _params.errorCallback(error);
   }
+}
+
+- (void)resumeDownload
+{
+    if (_resumeData != nil) {
+        _task = [_session downloadTaskWithResumeData:_resumeData];
+        [_task resume];
+        _resumeData = nil;
+    }
+}
+
+- (BOOL)isResumable
+{
+    return _resumeData != nil;
 }
 
 @end

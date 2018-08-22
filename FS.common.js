@@ -13,6 +13,7 @@ var NativeAppEventEmitter = require('react-native').NativeAppEventEmitter;  // i
 var DeviceEventEmitter = require('react-native').DeviceEventEmitter;        // Android
 var base64 = require('base-64');
 var utf8 = require('utf8');
+var isIOS = require('react-native').Platform.OS === 'ios';
 
 var RNFSFileTypeRegular = RNFSManager.RNFSFileTypeRegular;
 var RNFSFileTypeDirectory = RNFSManager.RNFSFileTypeDirectory;
@@ -28,9 +29,16 @@ var normalizeFilePath = (path: string) => (path.startsWith('file://') ? path.sli
 
 type MkdirOptions = {
   NSURLIsExcludedFromBackupKey?: boolean; // iOS only
+  NSFileProtectionKey?: string; // IOS only
+};
+
+type FileOptions = {
+    NSFileProtectionKey?: string; // IOS only
 };
 
 type ReadDirItem = {
+  ctime: ?Date;    // The creation date of the file (iOS only)
+  mtime: ?Date;    // The last modified date of the file
   name: string;     // The name of the item
   path: string;     // The absolute path to the item
   size: string;     // Size in bytes
@@ -39,12 +47,13 @@ type ReadDirItem = {
 };
 
 type StatResult = {
-  name: string;     // The name of the item
+  name: ?string;     // The name of the item TODO: why is this not documented?
   path: string;     // The absolute path to the item
   size: string;     // Size in bytes
   mode: number;     // UNIX file mode
   ctime: number;    // Created date
-  utime: number;    // Updated date
+  mtime: number;    // Last modified date
+  originalFilepath: string;    // In case of content uri this is the pointed file path, otherwise is the same as path
   isFile: () => boolean;        // Is the file just a file?
   isDirectory: () => boolean;   // Is the file a directory?
 };
@@ -56,10 +65,15 @@ type DownloadFileOptions = {
   fromUrl: string;          // URL to download file from
   toFile: string;           // Local filesystem path to save the file to
   headers?: Headers;        // An object of headers to be passed to the server
-  background?: boolean;     // iOS only
+  background?: boolean;     // Continue the download in the background after the app terminates (iOS only)
+  discretionary?: boolean;  // Allow the OS to control the timing and speed of the download to improve perceived performance  (iOS only)
+  cacheable?: boolean;      // Whether the download can be stored in the shared NSURLCache (iOS only)
   progressDivider?: number;
   begin?: (res: DownloadBeginCallbackResult) => void;
   progress?: (res: DownloadProgressCallbackResult) => void;
+  resumable?: () => void;    // only supported on iOS yet
+  connectionTimeout?: number; // only supported on Android yet
+  readTimeout?: number;       // supported on Android and iOS
 };
 
 type DownloadBeginCallbackResult = {
@@ -159,6 +173,8 @@ function readFileGeneric(filepath: string, encodingOrOptions:?string, command: F
 function readDirGeneric(dirpath: string, command: Function) {
   return command(normalizeFilePath(dirpath)).then(files => {
     return files.map(file => ({
+      ctime: file.ctime && new Date(file.ctime * 1000) || null,
+      mtime: file.mtime && new Date(file.mtime * 1000) || null,
       name: file.name,
       path: file.path,
       size: file.size,
@@ -174,20 +190,28 @@ var RNFS = {
     return RNFSManager.mkdir(normalizeFilePath(filepath), options).then(() => void 0);
   },
 
-  moveFile(filepath: string, destPath: string): Promise<void> {
-    return RNFSManager.moveFile(normalizeFilePath(filepath), normalizeFilePath(destPath)).then(() => void 0);
+  moveFile(filepath: string, destPath: string, options: FileOptions = {}): Promise<void> {
+    return RNFSManager.moveFile(normalizeFilePath(filepath), normalizeFilePath(destPath), options).then(() => void 0);
   },
 
-  copyFile(filepath: string, destPath: string): Promise<void> {
-    return RNFSManager.copyFile(normalizeFilePath(filepath), normalizeFilePath(destPath)).then(() => void 0);
+  copyFile(filepath: string, destPath: string, options: FileOptions = {}): Promise<void> {
+    return RNFSManager.copyFile(normalizeFilePath(filepath), normalizeFilePath(destPath), options).then(() => void 0);
   },
 
   pathForBundle(bundleNamed: string): Promise<string> {
     return RNFSManager.pathForBundle(bundleNamed);
   },
 
+  pathForGroup(groupName: string): Promise<string> {
+    return RNFSManager.pathForGroup(groupName);
+  },
+
   getFSInfo(): Promise<FSInfoResult> {
     return RNFSManager.getFSInfo();
+  },
+
+  getAllExternalFilesDirs(): Promise<string> {
+    return RNFSManager.getAllExternalFilesDirs();
   },
 
   unlink(filepath: string): Promise<void> {
@@ -202,8 +226,20 @@ var RNFS = {
     RNFSManager.stopDownload(jobId);
   },
 
+  resumeDownload(jobId: number): void {
+      RNFSManager.resumeDownload(jobId);
+  },
+
+  isResumable(jobId: number): Promise<bool> {
+      return RNFSManager.isResumable(jobId);
+  },
+
   stopUpload(jobId: number): void {
     RNFSManager.stopUpload(jobId);
+  },
+
+  completeHandlerIOS(jobId: number): void {
+    return RNFSManager.completeHandlerIOS(jobId);
   },
 
   readDir(dirpath: string): Promise<ReadDirItem[]> {
@@ -233,13 +269,22 @@ var RNFS = {
     });
   },
 
+  // setReadable for Android
+  setReadable(filepath : string, readable: boolean, ownerOnly: boolean) : Promise<boolean> {
+    return RNFSManager.setReadable(filepath, readable, ownerOnly).then( (result) => {
+      return result;
+    })
+  },
+
   stat(filepath: string): Promise<StatResult> {
     return RNFSManager.stat(normalizeFilePath(filepath)).then((result) => {
       return {
+        'path': filepath,
         'ctime': new Date(result.ctime * 1000),
         'mtime': new Date(result.mtime * 1000),
         'size': result.size,
         'mode': result.mode,
+        'originalFilepath': result.originalFilepath,
         isFile: () => result.type === RNFSFileTypeRegular,
         isDirectory: () => result.type === RNFSFileTypeDirectory,
       };
@@ -254,6 +299,36 @@ var RNFS = {
     return RNFSManager.readFileChunk(normalizeFilePath(filepath), offset, chunkSize);
   },
 
+  read(filepath: string, length: number = 0, position: number = 0, encodingOrOptions?: any): Promise<string> {
+    var options = {
+      encoding: 'utf8'
+    };
+
+    if (encodingOrOptions) {
+      if (typeof encodingOrOptions === 'string') {
+        options.encoding = encodingOrOptions;
+      } else if (typeof encodingOrOptions === 'object') {
+        options = encodingOrOptions;
+      }
+    }
+
+    return RNFSManager.read(normalizeFilePath(filepath), length, position).then((b64) => {
+      var contents;
+
+      if (options.encoding === 'utf8') {
+        contents = utf8.decode(base64.decode(b64));
+      } else if (options.encoding === 'ascii') {
+        contents = base64.decode(b64);
+      } else if (options.encoding === 'base64') {
+        contents = b64;
+      } else {
+        throw new Error('Invalid encoding type "' + String(options.encoding) + '"');
+      }
+
+      return contents;
+    });
+  },
+
   // Android only
   readFileAssets(filepath: string, encodingOrOptions?: any): Promise<string> {
     if (!RNFSManager.readFileAssets) {
@@ -263,7 +338,7 @@ var RNFS = {
   },
 
   hash(filepath: string, algorithm: string): Promise<string> {
-    return RNFSManager.hash(filepath, algorithm);
+    return RNFSManager.hash(normalizeFilePath(filepath), algorithm);
   },
 
   // Android only
@@ -272,6 +347,23 @@ var RNFS = {
       throw new Error('copyFileAssets is not available on this platform');
     }
     return RNFSManager.copyFileAssets(normalizeFilePath(filepath), normalizeFilePath(destPath)).then(() => void 0);
+  },
+
+  // iOS only
+  // Copies fotos from asset-library (camera-roll) to a specific location
+  // with a given width or height
+  // @see: https://developer.apple.com/reference/photos/phimagemanager/1616964-requestimageforasset
+  copyAssetsFileIOS(imageUri: string, destPath: string, width: number, height: number,
+    scale : number = 1.0, compression : number = 1.0, resizeMode : string = 'contain'  ): Promise<string> {
+    return RNFSManager.copyAssetsFileIOS(imageUri, destPath, width, height, scale, compression, resizeMode );
+  },
+
+  // iOS only
+  // Copies fotos from asset-library (camera-roll) to a specific location
+  // with a given width or height
+  // @see: https://developer.apple.com/reference/photos/phimagemanager/1616964-requestimageforasset
+  copyAssetsVideoIOS(imageUri: string, destPath: string): Promise<string> {
+    return RNFSManager.copyAssetsVideoIOS(imageUri, destPath);
   },
 
   writeFile(filepath: string, contents: string, encodingOrOptions?: any): Promise<void> {
@@ -285,7 +377,10 @@ var RNFS = {
       if (typeof encodingOrOptions === 'string') {
         options.encoding = encodingOrOptions;
       } else if (typeof encodingOrOptions === 'object') {
-        options = encodingOrOptions;
+        options = {
+            ...options,
+            ...encodingOrOptions
+        };
       }
     }
 
@@ -299,7 +394,7 @@ var RNFS = {
       throw new Error('Invalid encoding type "' + options.encoding + '"');
     }
 
-    return RNFSManager.writeFile(normalizeFilePath(filepath), b64).then(() => void 0);
+    return RNFSManager.writeFile(normalizeFilePath(filepath), b64, options).then(() => void 0);
   },
 
   appendFile(filepath: string, contents: string, encodingOrOptions?: any): Promise<void> {
@@ -330,6 +425,38 @@ var RNFS = {
     return RNFSManager.appendFile(normalizeFilePath(filepath), b64);
   },
 
+  write(filepath: string, contents: string, position?: number, encodingOrOptions?: any): Promise<void> {
+    var b64;
+
+    var options = {
+      encoding: 'utf8'
+    };
+
+    if (encodingOrOptions) {
+      if (typeof encodingOrOptions === 'string') {
+        options.encoding = encodingOrOptions;
+      } else if (typeof encodingOrOptions === 'object') {
+        options = encodingOrOptions;
+      }
+    }
+
+    if (options.encoding === 'utf8') {
+      b64 = base64.encode(utf8.encode(contents));
+    } else if (options.encoding === 'ascii') {
+      b64 = base64.encode(contents);
+    } else if (options.encoding === 'base64') {
+      b64 = contents;
+    } else {
+      throw new Error('Invalid encoding type "' + options.encoding + '"');
+    }
+
+    if (position === undefined) {
+      position = -1;
+    }
+
+    return RNFSManager.write(normalizeFilePath(filepath), b64, position).then(() => void 0);
+  },
+
   downloadFile(options: DownloadFileOptions): { jobId: number, promise: Promise<DownloadResult> } {
     if (typeof options !== 'object') throw new Error('downloadFile: Invalid value for argument `options`');
     if (typeof options.fromUrl !== 'string') throw new Error('downloadFile: Invalid value for property `fromUrl`');
@@ -337,6 +464,8 @@ var RNFS = {
     if (options.headers && typeof options.headers !== 'object') throw new Error('downloadFile: Invalid value for property `headers`');
     if (options.background && typeof options.background !== 'boolean') throw new Error('downloadFile: Invalid value for property `background`');
     if (options.progressDivider && typeof options.progressDivider !== 'number') throw new Error('downloadFile: Invalid value for property `progressDivider`');
+    if (options.readTimeout && typeof options.readTimeout !== 'number') throw new Error('downloadFile: Invalid value for property `readTimeout`');
+    if (options.connectionTimeout && typeof options.connectionTimeout !== 'number') throw new Error('downloadFile: Invalid value for property `connectionTimeout`');
 
     var jobId = getJobId();
     var subscriptions = [];
@@ -349,13 +478,19 @@ var RNFS = {
       subscriptions.push(NativeAppEventEmitter.addListener('DownloadProgress-' + jobId, options.progress));
     }
 
+    if (options.resumable) {
+      subscriptions.push(NativeAppEventEmitter.addListener('DownloadResumable-' + jobId, options.resumable));
+    }
+
     var bridgeOptions = {
       jobId: jobId,
       fromUrl: options.fromUrl,
       toFile: normalizeFilePath(options.toFile),
       headers: options.headers || {},
       background: !!options.background,
-      progressDivider: options.progressDivider || 0
+      progressDivider: options.progressDivider || 0,
+      readTimeout: options.readTimeout || 15000,
+      connectionTimeout: options.connectionTimeout || 5000
     };
 
     return {
@@ -363,6 +498,9 @@ var RNFS = {
       promise: RNFSManager.downloadFile(bridgeOptions).then(res => {
         subscriptions.forEach(sub => sub.remove());
         return res;
+      })
+      .catch( e => {
+        return Promise.reject(e);
       })
     };
   },
@@ -419,15 +557,30 @@ var RNFS = {
     };
   },
 
+  touch(filepath: string, mtime?: Date, ctime?: Date): Promise<void> {
+    if (ctime && !(ctime instanceof Date)) throw new Error('touch: Invalid value for argument `ctime`');
+    if (mtime && !(mtime instanceof Date)) throw new Error('touch: Invalid value for argument `mtime`');
+    var ctimeTime = 0;
+    if (isIOS) {
+      ctimeTime = ctime && ctime.getTime();
+    }
+    return RNFSManager.touch(
+      normalizeFilePath(filepath),
+      mtime && mtime.getTime(),
+      ctimeTime
+    );
+  },
+
   MainBundlePath: RNFSManager.RNFSMainBundlePath,
   CachesDirectoryPath: RNFSManager.RNFSCachesDirectoryPath,
+  ExternalCachesDirectoryPath: RNFSManager.RNFSExternalCachesDirectoryPath,
   DocumentDirectoryPath: RNFSManager.RNFSDocumentDirectoryPath,
   ExternalDirectoryPath: RNFSManager.RNFSExternalDirectoryPath,
   ExternalStorageDirectoryPath: RNFSManager.RNFSExternalStorageDirectoryPath,
   TemporaryDirectoryPath: RNFSManager.RNFSTemporaryDirectoryPath,
   LibraryDirectoryPath: RNFSManager.RNFSLibraryDirectoryPath,
-  PicturesDirectoryPath: RNFSManager.RNFSPicturesDirectoryPath
-
+  PicturesDirectoryPath: RNFSManager.RNFSPicturesDirectoryPath,
+  FileProtectionKeys: RNFSManager.RNFSFileProtectionKeys
 };
 
 module.exports = RNFS;

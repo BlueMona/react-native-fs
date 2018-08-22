@@ -2,7 +2,50 @@
 
 Native filesystem access for react-native
 
-## Breaking change in v2.x
+## Changes for v2.11
+- Prepared for RN 0.56 thanx to [#535](https://github.com/itinance/react-native-fs/pull/535) by [rmevans9](https://github.com/rmevans9)
+- #503 make sure to return the original file uri if content:// scheme is not used
+- #510 Fixes an IndexOutOfBounds while uploading files in Android
+- #515 Add cacheable option to downloadFile on iOScompletion callback
+- #516 [iOS] Ensure _bytesWritten is correct in download
+- #519 updated compilesdkversion and buildtoolsversion
+- #535 Make this work with RN56
+
+## Changes for v2.10
+- UploadFiles is now also available for Android [#486](https://github.com/itinance/react-native-fs/pull/486) by [hank121314](https://github.com/hank121314)
+- Fixed a memory leak that caused after running many simultaneous upload jobs on iOS [#502](https://github.com/itinance/react-native-fs/pull/502) by [Ignigena](https://github.com/Ignigena)
+- Android: Resolve filepath for content URI [480](https://github.com/itinance/react-native-fs/pull/480) by [andtos90](https://github.com/andtos90)
+- (Android only) Add ExternalCachesDirectoryPath [490](https://github.com/itinance/react-native-fs/pull/490) by [superandrew213](https://github.com/superandrew213)
+
+## Changes for v2.9
+- (iOS only) Resumable downloads and better background downloads handling [#335](https://github.com/itinance/react-native-fs/pull/335) by [ptelad](https://github.com/ptelad)
+- (Android only) getAllExternalFilesDirs() added by [ngrj](https://github.com/ngrj)
+- Content URI support [#395](https://github.com/itinance/react-native-fs/pull/395) by [krzysztof-miemiec](https://github.com/krzysztof-miemiec)
+- Fixed Cocoapods-Installation
+
+## Changes for v2.8
+- Fix for [#346](https://github.com/itinance/react-native-fs/pull/347): compressed file assets are detected as directories thx to [jacargentina](https://github.com/jacargentina)
+- added support for Video-Assets on iOS (copyAssetsVideoIOS) and setReadable() on Android by [itinance](https://github.com/itinance)
+- Added react-native-windows support for UWP [#337](https://github.com/itinance/react-native-fs/pull/337) thx to [rozele](https://github.com/rozele)
+- Expose the iOS `discretionary` flag on `downloadFile` [#360](https://github.com/itinance/react-native-fs/pull/360) thx to [jamesreggio](https://github.com/jamesreggio)
+
+## Changes for v2.5
+- breaking change for RN 0.47 at android (https://github.com/facebook/react-native/releases/tag/v0.47.0)
+
+## Changes for v2.4
+- Made new thread for other native processes [ANDROID] (https://github.com/itinance/react-native-fs/commit/ad36b078db9728489155a55c1b7daa42ed191945) thx to [codesinghanoop](https://github.com/codesinghanoop)
+- Upgrade gradle build tools to 25 (https://github.com/itinance/react-native-fs/commit/239bccb9d56fe9308daafb86920ed29eb9e5cfe4) thx to [markusguenther](https://github.com/markusguenther)
+- Fixed Podfile Path-Error (https://github.com/itinance/react-native-fs/commit/9fd51e7e977400f3194c100af88b4c25e7510530) thx to [colorfulberry](https://github.com/colorfulberry)
+- Add read-method with length and position params (https://github.com/itinance/react-native-fs/commit/a39c22be81f0c1f2263dbe60f3cd6cfcc902d2ac) thx to [simitti](https://github.com/simitii)
+
+## Changes for v2.3
+
+- React-Native 0.40 is minimum required for compiling on iOS (otherwise install an older release, see below)
+- Access to iOS-based "assets-library" is now supported with `copyAssetsFileIOS`
+- `readDir` will return now creation- and modification-time of files as with `stat()` (thanks @Ignigena)
+- optional connectionTimeout and readTimeout-Settings on `downloadFile` for Android (thanks @drunksaint)
+
+## Breaking change in v2.0
 
 - Removed attributes from `writeFile` and `appendFile` for iOS / Android consistency
 - `downloadFile` takes `options` object rather than parameters
@@ -16,7 +59,7 @@ Native filesystem access for react-native
 
 First you need to install react-native-fs:
 
-```javascript
+```
 npm install react-native-fs --save
 ```
 
@@ -26,6 +69,9 @@ npm install react-native-fs --save
 npm install react-native-fs@2.0.1-rc.2 --save
 ```
 
+As @a-koka pointed out, you should then update your package.json to
+`"react-native-fs": "2.0.1-rc.2"` (without the tilde)
+
 ### Adding automatically with react-native link
 
 At the command line, in your project folder, type:
@@ -34,12 +80,12 @@ At the command line, in your project folder, type:
 
 Done! No need to worry about manually adding the library to your project.
 
-### Adding with CocoaPods
+###  Adding with CocoaPods
 
-Add the RNFS pod to your list of application pods in your Podfile, using the path from the Podfile to the installed module:
+ Add the RNFS pod to your list of application pods in your Podfile, using the path from the Podfile to the installed module:~~
 
 ```
-pod 'RNFS', :path => './node_modules/react-native-fs'
+pod 'RNFS', :path => '../node_modules/react-native-fs'
 ```
 
 Install pods as usual:
@@ -145,6 +191,18 @@ public class MainApplication extends Application implements ReactApplication {
     }
 ```
 
+## Usage (Windows)
+
+### Adding automatically with react-native link
+
+The `link` command also works for adding the native dependency on Windows:
+
+`react-native link react-native-fs`
+
+### Adding Manually in Visual Studio
+
+Follow the instructions in the ['Linking Libraries'](https://github.com/Microsoft/react-native-windows/blob/master/docs/LinkingLibrariesWindows.md) documentation on the react-native-windows GitHub repo. For the first step of adding the project to the Visual Studio solution file, the path to the project should be `../node_modules/react-native-fs/windows/RNFS/RNFS.csproj`.
+
 ## Examples
 
 ### Basic
@@ -185,6 +243,8 @@ RNFS.readDir(RNFS.MainBundlePath) // On Android, use "RNFS.DocumentDirectoryPath
 var RNFS = require('react-native-fs');
 
 // create a path you want to write to
+// :warning: on iOS, you cannot write into `RNFS.MainBundlePath`,
+// but `RNFS.DocumentDirectoryPath` exists on both platforms and is writable
 var path = RNFS.DocumentDirectoryPath + '/test.txt';
 
 // write the file
@@ -280,10 +340,12 @@ RNFS.uploadFiles({
 
 The following constants are available on the `RNFS` export:
 
-- `MainBundlePath` (`String`) The absolute path to the main bundle directory
+- `MainBundlePath` (`String`) The absolute path to the main bundle directory (not available on Android)
 - `CachesDirectoryPath` (`String`) The absolute path to the caches directory
+- `ExternalCachesDirectoryPath` (`String`) The absolute path to the external caches directory (android only)
 - `DocumentDirectoryPath`  (`String`) The absolute path to the document directory
-- `TemporaryDirectoryPath` (`String`) The absolute path to the temporary directory (iOS only)
+- `TemporaryDirectoryPath` (`String`) The absolute path to the temporary directory (falls back to Caching-Directory on Android)
+- `LibraryDirectoryPath` (`String`) The absolute path to the NSLibraryDirectory (iOS only)
 - `ExternalDirectoryPath` (`String`) The absolute path to the external files, shared directory (android only)
 - `ExternalStorageDirectoryPath` (`String`) The absolute path to the external storage, shared directory (android only)
 
@@ -295,6 +357,8 @@ The returned promise resolves with an array of objects with the following proper
 
 ```
 type ReadDirItem = {
+  ctime: date;     // The creation date of the file (iOS only)
+  mtime: date;     // The last modified date of the file
   name: string;     // The name of the item
   path: string;     // The absolute path to the item
   size: string;     // Size in bytes
@@ -314,8 +378,8 @@ The returned promise resolves with an array of objects with the following proper
 type ReadDirItem = {
   name: string;     // The name of the item
   path: string;     // The absolute path to the item
-  size: string;     // Size in bytes. 
-  						// Note that the size of files compressed during the creation of the APK (such as JSON files) cannot be determined. 
+  size: string;     // Size in bytes.
+  						// Note that the size of files compressed during the creation of the APK (such as JSON files) cannot be determined.
   						// `size` will be set to -1 in this case.
   isFile: () => boolean;        // Is the file just a file?
   isDirectory: () => boolean;   // Is the file a directory?
@@ -330,15 +394,17 @@ Node.js style version of `readDir` that returns only the names. Note the lowerca
 
 ### `stat(filepath: string): Promise<StatResult>`
 
-Stats an item at `path`.
+Stats an item at `filepath`. If the `filepath` is linked to a virtual file, for example Android Content URI, the `originalPath` can be used to find the pointed file path. 
 The promise resolves with an object with the following properties:
 
 ```
 type StatResult = {
-  name: string;     // The name of the item
-  path: string;     // The absolute path to the item
+  path:            // The same as filepath argument
+  ctime: date;     // The creation date of the file
+  mtime: date;     // The last modified date of the file
   size: string;     // Size in bytes
   mode: number;     // UNIX file mode
+  originalFilepath: string;    // ANDROID: In case of content uri this is the pointed file path, otherwise is the same as path
   isFile: () => boolean;        // Is the file just a file?
   isDirectory: () => boolean;   // Is the file a directory?
 };
@@ -349,6 +415,12 @@ type StatResult = {
 Reads the file at `path` and return contents. `encoding` can be one of `utf8` (default), `ascii`, `base64`. Use `base64` for reading binary files.
 
 Note: you will take quite a performance hit if you are reading big files
+
+### `read(filepath: string, length = 0, position = 0, encodingOrOptions?: any): Promise<string>`
+
+Reads `length` bytes from the given `position` of the file at `path` and returns contents. `encoding` can be one of `utf8` (default), `ascii`, `base64`. Use `base64` for reading binary files.
+
+Note: reading big files piece by piece using this method may be useful in terms of performance.
 
 ### `readFileAssets(filepath:string, encoding?: string): Promise<string>`
 
@@ -366,6 +438,10 @@ Write the `contents` to `filepath`. `encoding` can be one of `utf8` (default), `
 
 Append the `contents` to `filepath`. `encoding` can be one of `utf8` (default), `ascii`, `base64`.
 
+### `write(filepath: string, contents: string, position?: number, encoding?: string): Promise<void>`
+
+Write the `contents` to `filepath` at the given random access position. When `position` is `undefined` or `-1` the contents is appended to the end of the file. `encoding` can be one of `utf8` (default), `ascii`, `base64`.
+
 ### `moveFile(filepath: string, destPath: string): Promise<void>`
 
 Moves the file located at `filepath` to `destPath`. This is more performant than reading and then re-writing the file data because the move is done natively and the data doesn't have to be copied or cross the bridge.
@@ -378,9 +454,33 @@ Note: On Android copyFile will overwrite `destPath` if it already exists. On iOS
 
 ### `copyFileAssets(filepath: string, destPath: string): Promise<void>`
 
-Copies the file at `filepath ` in the Android app's assets folder and copies it to the given `destPath ` path.
+Copies the file at `filepath` in the Android app's assets folder and copies it to the given `destPath ` path.
 
 Note: Android only. Will overwrite destPath if it already exists
+
+### `copyAssetsFileIOS(imageUri: string, destPath: string, width: number, height: number, scale : number = 1.0, compression : number = 1.0, resizeMode : string = 'contain'  ): Promise<string>`
+
+iOS-only: copies a file from camera-roll, that is prefixed with "assets-library://asset/asset.JPG?..."
+to a specific destination. It will download the original from iCloud if necessary.
+
+If width and height is > 0, the image will be resized to a specific size and a specific compression rate.
+If scale is below 1, the image will be scaled according to the scale-factor (between 0.0 and 1.0)
+The resizeMode is also considered.
+
+*Video-Support:*
+
+One can use this method also to create a thumbNail from a video in a specific size.
+Currently it is impossible to specify a concrete position, the OS will decide wich
+Thumbnail you'll get then.
+To copy a video from assets-library and save it as a mp4-file, refer to copyAssetsVideoIOS.
+
+Further information: https://developer.apple.com/reference/photos/phimagemanager/1616964-requestimageforasset
+The promise will on success return the final destination of the file, as it was defined in the destPath-parameter.
+
+### copyAssetsVideoIOS(videoUri: string, destPath: string): Promise<string>
+
+iOS-only: copies a video from assets-library, that is prefixed with 'assets-library://asset/asset.MOV?...'
+to a specific destination.
 
 ### `unlink(filepath: string): Promise<void>`
 
@@ -399,6 +499,10 @@ Check in the Android assets folder if the item exists. `filepath` is the relativ
 ### `hash(filepath: string, algorithm: string): Promise<string>`
 
 Reads the file at `path` and returns its checksum as determined by `algorithm`, which can be one of `md5`, `sha1`, `sha224`, `sha256`, `sha384`, `sha512`.
+
+### `touch(filepath: string, mtime?: Date, ctime?: Date): Promise<string>`
+
+Sets the modification timestamp `mtime` and creation timestamp `ctime` of the file at `filepath`. Setting `ctime` is only supported on iOS, android always sets both timestamps to `mtime`.
 
 ### `mkdir(filepath: string, options?: MkdirOptions): Promise<void>`
 
@@ -419,10 +523,15 @@ type DownloadFileOptions = {
   fromUrl: string;          // URL to download file from
   toFile: string;           // Local filesystem path to save the file to
   headers?: Headers;        // An object of headers to be passed to the server
-  background?: boolean;
+  background?: boolean;     // Continue the download in the background after the app terminates (iOS only)
+  discretionary?: boolean;  // Allow the OS to control the timing and speed of the download to improve perceived performance  (iOS only)
+  cacheable?: boolean;      // Whether the download can be stored in the shared NSURLCache (iOS only, defaults to true)
   progressDivider?: number;
   begin?: (res: DownloadBeginCallbackResult) => void;
   progress?: (res: DownloadProgressCallbackResult) => void;
+  resumable?: () => void;    // only supported on iOS yet
+  connectionTimeout?: number // only supported on Android yet
+  readTimeout?: number       // supported on Android and iOS
 };
 ```
 ```
@@ -463,14 +572,35 @@ Use it for performance issues.
 If `progressDivider` = 0, you will receive all `progressCallback` calls, default value is 0.
 
 (IOS only): `options.background` (`Boolean`) - Whether to continue downloads when the app is not focused (default: `false`)
-                           This option is currently only available for iOS, and you must [enable
-                           background fetch](https://www.objc.io/issues/5-ios7/multitasking/#background-fetch<Paste>)
-                           for your project in XCode.
+                           This option is currently only available for iOS, see the [Background Downloads Tutorial (iOS)](#background-downloads-tutorial-ios) section.
 
+(IOS only): If `options.resumable` is provided, it will be invoked when the download has stopped and and can be resumed using `resumeDownload()`.
 
 ### `stopDownload(jobId: number): void`
 
 Abort the current download job with this ID. The partial file will remain on the filesystem.
+
+### (iOS only) `resumeDownload(jobId: number): void`
+
+Resume the current download job with this ID.
+
+### (iOS only) `isResumable(jobId: number): Promise<bool>`
+
+Check if the the download job with this ID is resumable with `resumeDownload()`.
+
+Example:
+
+```
+if (await RNFS.isResumable(jobId) {
+    RNFS.resumeDownload(jobId)
+}
+```
+
+### (iOS only) `completeHandlerIOS(jobId: number): void`
+
+For use when using background downloads, tell iOS you are done handling a completed download.
+
+Read more about background donwloads in the [Background Downloads Tutorial (iOS)](#background-downloads-tutorial-ios) section.
 
 ### (iOS only) `uploadFiles(options: UploadFileOptions): { jobId: number, promise: Promise<UploadResult> }`
 
@@ -542,6 +672,50 @@ type FSInfoResult = {
   freeSpace: number;    // The amount of available storage space on the device (in bytes).
 };
 ```
+
+### (Android only) `getAllExternalFilesDirs(): Promise<string[]>`
+
+Returns an array with the absolute paths to application-specific directories on all shared/external storage devices where the application can place persistent files it owns.
+
+### (iOS only) `pathForGroup(groupIdentifier: string): Promise<string>`
+
+`groupIdentifier` (`string`) Any value from the *com.apple.security.application-groups* entitlements list.
+
+Returns the absolute path to the directory shared for all applications with the same security group identifier.
+This directory can be used to to share files between application of the same developer.
+
+Invalid group identifier will cause a rejection.
+
+For more information read the [Adding an App to an App Group](https://developer.apple.com/library/content/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html#//apple_ref/doc/uid/TP40011195-CH4-SW19) section.
+
+## Background Downloads Tutorial (iOS)
+
+Background downloads in iOS require a bit of a setup.
+
+First, in your `AppDelegate.m` file add the following:
+
+```
+#import <RNFSManager.h>
+
+...
+
+- (void)application:(UIApplication *)application handleEventsForBackgroundURLSession:(NSString *)identifier completionHandler:(void (^)())completionHandler
+{
+  [RNFSManager setCompletionHandlerForIdentifier:identifier completionHandler:completionHandler];
+}
+
+```
+
+The `handleEventsForBackgroundURLSession` method is called when a background download is done and your app is not in the foreground.
+
+We need to pass the `completionHandler` to RNFS along with its `identifier`.
+
+The JavaScript will continue to work as usual when the download is done but now you must call `RNFS.completeHandlerIOS(jobId)` when you're done handling the download (show a notification etc.)
+
+**BE AWARE!** iOS will give about 30 sec. to run your code after `handleEventsForBackgroundURLSession` is called and until `completionHandler`
+is triggered so don't do anything that might take a long time (like unzipping), you will be able to do it after the user re-launces the app,
+otherwide iOS will terminate your app.
+
 
 ## Test / Demo app
 
