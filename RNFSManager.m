@@ -282,7 +282,6 @@ RCT_EXPORT_METHOD(readFile:(NSString *)filepath
   resolve(base64Content);
 }
 
-<<<<<<< HEAD
 RCT_EXPORT_METHOD(readFileChunk:(NSString *)filepath
                   offset:(nonnull NSNumber *)offsetP
                   chunkSize:(nonnull NSNumber *)chunkSizeP
