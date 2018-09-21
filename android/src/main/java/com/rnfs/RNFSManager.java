@@ -27,6 +27,7 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.RCTNativeAppEventEmitter;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -598,20 +599,49 @@ public class RNFSManager extends ReactContextBaseJavaModule {
     }
   }
 
+  public static byte[] getBytes(InputStream is) throws IOException {
+
+    int len;
+    int size = 1024;
+    byte[] buf;
+
+    if (is instanceof ByteArrayInputStream) {
+      size = is.available();
+      buf = new byte[size];
+      len = is.read(buf, 0, size);
+    } else {
+      ByteArrayOutputStream bos = new ByteArrayOutputStream();
+      buf = new byte[size];
+      while ((len = is.read(buf, 0, size)) != -1)
+        bos.write(buf, 0, len);
+      buf = bos.toByteArray();
+    }
+    return buf;
+  }
+
   @ReactMethod
   public void stat(String filepath, Promise promise) {
     try {
       String originalFilepath = getOriginalFilepath(filepath);
+      WritableMap statMap = Arguments.createMap();
+      statMap.putString("originalFilepath", originalFilepath);
+
+      Uri uri = getFileUri(filepath);
+      if (uri.getScheme().equals("content") && originalFilepath == filepath) {
+        InputStream stream = reactContext.getContentResolver().openInputStream(uri);
+        int size = getBytes(stream).length;
+        statMap.putInt("size", size);
+        promise.resolve(statMap);
+        return;
+      }
       File file = new File(originalFilepath);
 
       if (!file.exists()) throw new Exception("File does not exist");
 
-      WritableMap statMap = Arguments.createMap();
       statMap.putInt("ctime", (int) (file.lastModified() / 1000));
       statMap.putInt("mtime", (int) (file.lastModified() / 1000));
       statMap.putInt("size", (int) file.length());
       statMap.putInt("type", file.isDirectory() ? 1 : 0);
-      statMap.putString("originalFilepath", originalFilepath);
 
       promise.resolve(statMap);
     } catch (Exception ex) {
