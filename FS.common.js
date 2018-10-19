@@ -285,6 +285,9 @@ var RNFS = {
         'size': result.size,
         'mode': result.mode,
         'originalFilepath': result.originalFilepath,
+        'extension': result.extension,
+        'mimeType': result.mimeType,
+        'displayName': result.displayName,
         isFile: () => result.type === RNFSFileTypeRegular,
         isDirectory: () => result.type === RNFSFileTypeDirectory,
       };

@@ -14,6 +14,7 @@ import android.provider.MediaStore;
 import android.support.annotation.Nullable;
 import android.util.Base64;
 import android.util.SparseArray;
+import android.webkit.MimeTypeMap;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
@@ -91,12 +92,26 @@ public class RNFSManager extends ReactContextBaseJavaModule {
       try {
         Cursor cursor = reactContext.getContentResolver().query(uri, null, null, null, null);
         if (cursor.moveToFirst()) {
-          originalFilepath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATA));
+          originalFilepath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATA));
         }
       } catch (IllegalArgumentException ignored) {
       }
     }
     return originalFilepath;
+  }
+
+  private String getContentDisplayName(String contentPath) throws IORejectionException {
+    String displayName = null;
+    Uri uri = getFileUri(contentPath);
+      try {
+        String[] proj = { MediaStore.MediaColumns.DISPLAY_NAME };
+        Cursor cursor = reactContext.getContentResolver().query(uri, proj, null, null, null);
+        if (cursor.moveToFirst()) {
+          displayName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME));
+        }
+      } catch (IllegalArgumentException ignored) {
+      }
+    return displayName;
   }
 
   private InputStream getInputStream(String filepath) throws IORejectionException {
@@ -628,9 +643,16 @@ public class RNFSManager extends ReactContextBaseJavaModule {
 
       Uri uri = getFileUri(filepath);
       if (uri.getScheme().equals("content") && originalFilepath == filepath) {
+        final MimeTypeMap mime = MimeTypeMap.getSingleton();
+        String mimeType = reactContext.getContentResolver().getType(uri);
+        String extension = mime.getExtensionFromMimeType(mimeType);
+        String displayName = getContentDisplayName(originalFilepath);
         InputStream stream = reactContext.getContentResolver().openInputStream(uri);
         int size = getBytes(stream).length;
         statMap.putInt("size", size);
+        statMap.putString("extension", extension);
+        statMap.putString("mimeType", mimeType);
+        statMap.putString("displayName", displayName);
         promise.resolve(statMap);
         return;
       }
